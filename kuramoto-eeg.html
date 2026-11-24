@@ -1,0 +1,584 @@
+<title>Kuramoto EEG</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Dark-first committed theme: deep space EEG lab
+   Layout: phase-circle left | brain-map center (dominant) | controls right; EEG strip bottom */
+:root {
+  --bg:      #05050f;
+  --surface: #09091d;
+  --border:  #161830;
+  --fg:      #c0ccee;
+  --dim:     #3e456a;
+  --green:   #2dff4f;
+  --amber:   #ff9a00;
+  --cyan:    #00d4ff;
+  --red:     #ff2d44;
+  color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:'Space Grotesk',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--fg);
+  display:flex;
+  flex-direction:column;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:10px;
+  gap:8px;
+  overflow:hidden;
+}
+
+/* Header */
+header{display:flex;align-items:center;gap:12px;flex-shrink:0}
+h1{margin:0;font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.r-badge{
+  font-family:'JetBrains Mono',monospace;font-size:12px;
+  color:var(--green);background:rgba(45,255,79,.07);
+  border:1px solid rgba(45,255,79,.18);padding:2px 10px;border-radius:3px;
+  letter-spacing:.05em;font-variant-numeric:tabular-nums;
+}
+#play-btn{
+  margin-left:auto;background:transparent;border:1px solid var(--border);
+  color:var(--dim);font-family:'Space Grotesk',sans-serif;font-size:11px;
+  font-weight:500;letter-spacing:.12em;text-transform:uppercase;
+  padding:5px 16px;border-radius:3px;cursor:pointer;
+  transition:border-color .15s,color .15s;
+}
+#play-btn:hover,#play-btn.on{border-color:var(--green);color:var(--green)}
+
+/* Main row */
+.main-row{flex:1;display:flex;gap:10px;min-height:0}
+
+/* Phase column */
+.phase-col{
+  flex-shrink:0;width:158px;display:flex;
+  flex-direction:column;align-items:center;gap:5px;
+}
+.canvas-label{
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim);font-weight:500;
+}
+
+/* Brain column */
+.brain-col{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;position:relative}
+#brain-canvas{display:block;max-width:100%;height:auto;aspect-ratio:1}
+.brain-legend{
+  position:absolute;bottom:10px;left:10px;
+  display:flex;flex-direction:column;gap:5px;pointer-events:none;
+}
+.bl-row{display:flex;align-items:center;gap:6px;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.bl-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.bl-dot.aud{background:#ff9a00}.bl-dot.crt{background:#2dff4f}
+.bl-line{width:20px;height:2px;background:linear-gradient(90deg,rgba(45,255,79,.1),rgba(45,255,79,.75));border-radius:1px;flex-shrink:0}
+.canvas-sublabel{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(62,69,106,.65)}
+
+/* Controls column */
+.ctrl-col{
+  flex-shrink:0;width:148px;display:flex;
+  flex-direction:column;justify-content:center;gap:20px;
+}
+.ctrl-group{display:flex;flex-direction:column;gap:7px}
+.ctrl-label{display:flex;justify-content:space-between;align-items:baseline}
+.ctrl-name{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:500}
+.ctrl-val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--fg);font-variant-numeric:tabular-nums}
+.knob-row{display:flex;align-items:center;gap:10px}
+#k-knob{cursor:ns-resize;user-select:none;-webkit-user-select:none;touch-action:none;display:block}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:3px;
+  background:var(--border);border-radius:2px;cursor:pointer;outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--fg);cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:13px;height:13px;border-radius:50%;background:var(--fg);
+  cursor:pointer;border:none;
+}
+
+/* EEG strip */
+.eeg-strip{
+  flex-shrink:0;height:102px;background:var(--surface);
+  border:1px solid var(--border);border-radius:4px;
+  position:relative;overflow:hidden;
+}
+#eeg-canvas{position:absolute;inset:0}
+.eeg-legend{
+  position:absolute;top:7px;right:10px;
+  display:flex;gap:14px;pointer-events:none;
+}
+.eeg-tag{
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:500;display:flex;align-items:center;gap:5px;
+}
+.eeg-tag::before{content:'';display:inline-block;width:18px;height:2px;border-radius:1px}
+.eeg-tag.t7{color:var(--amber)}.eeg-tag.t7::before{background:var(--amber)}
+.eeg-tag.fz{color:var(--cyan)} .eeg-tag.fz::before{background:var(--cyan)}
+
+/* Beat dot */
+#beat-dot{
+  position:fixed;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  right:max(14px,env(safe-area-inset-right,0px));
+  width:10px;height:10px;border-radius:50%;
+  background:var(--red);opacity:.15;z-index:10;
+  pointer-events:none;transition:opacity .1s,box-shadow .1s;
+}
+#beat-dot.flash{
+  opacity:1;box-shadow:0 0 8px var(--red),0 0 18px rgba(255,45,68,.5);
+  transition:none;
+}
+
+@media(max-width:540px){
+  .phase-col{display:none}
+  .ctrl-col{width:120px}
+}
+</style>
+
+<header>
+  <h1>Kuramoto EEG</h1>
+  <span class="r-badge">R&nbsp;=&nbsp;<span id="r-val">0.00</span></span>
+  <button id="play-btn">&#9654; Play</button>
+</header>
+
+<div class="main-row">
+  <div class="phase-col">
+    <canvas id="phase-canvas" width="150" height="150"></canvas>
+    <span class="canvas-label">Phase space</span>
+    <span class="canvas-sublabel">cluster&nbsp;=&nbsp;sync</span>
+  </div>
+  <div class="brain-col">
+    <canvas id="brain-canvas" width="380" height="380"></canvas>
+    <div class="brain-legend">
+      <div class="bl-row"><span class="bl-dot aud"></span>auditory input nodes</div>
+      <div class="bl-row"><span class="bl-dot crt"></span>cortical oscillators</div>
+      <div class="bl-row"><span class="bl-line"></span>phase alignment</div>
+    </div>
+  </div>
+  <div class="ctrl-col">
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        <span class="ctrl-name">Coupling K</span>
+        <span class="ctrl-val" id="k-val">2.0</span>
+      </div>
+      <div class="knob-row">
+        <canvas id="k-knob" width="58" height="58"></canvas>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        <span class="ctrl-name">Tempo</span>
+        <span class="ctrl-val"><span id="bpm-val">120</span>&thinsp;bpm</span>
+      </div>
+      <input type="range" id="tempo-range" min="40" max="240" value="120" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        <span class="ctrl-name">Beat strength</span>
+        <span class="ctrl-val" id="beat-val">1.5</span>
+      </div>
+      <input type="range" id="beat-range" min="0" max="3" value="1.5" step="0.05">
+    </div>
+  </div>
+</div>
+
+<div class="eeg-strip">
+  <canvas id="eeg-canvas"></canvas>
+  <div class="eeg-legend">
+    <span class="eeg-tag t7">T7</span>
+    <span class="eeg-tag fz">Fz</span>
+  </div>
+</div>
+
+<div id="beat-dot"></div>
+
+<script>
+(function(){
+'use strict';
+
+// 10-20 electrode positions: x in [0,1] left-right, y in [0,1] front(top)-back(bottom)
+const ELEC=[
+  {n:'Fp1',x:.344,y:.090},{n:'Fp2',x:.656,y:.090},
+  {n:'F7', x:.141,y:.313},{n:'F3', x:.313,y:.265},
+  {n:'Fz', x:.500,y:.250},{n:'F4', x:.687,y:.265},{n:'F8',x:.859,y:.313},
+  {n:'T7', x:.063,y:.500},  // 7 — primary auditory L
+  {n:'C3', x:.281,y:.500},{n:'Cz',x:.500,y:.500},{n:'C4',x:.719,y:.500},
+  {n:'T8', x:.937,y:.500},  // 11 — primary auditory R
+  {n:'P7', x:.141,y:.688},  // 12 — auditory assoc L
+  {n:'P3', x:.313,y:.734},{n:'Pz',x:.500,y:.750},{n:'P4',x:.687,y:.734},
+  {n:'P8', x:.859,y:.688},  // 16 — auditory assoc R
+  {n:'O1', x:.344,y:.906},{n:'O2',x:.656,y:.906},
+];
+const N=ELEC.length;
+const AUDITORY=new Set([7,11,12,16]);
+const IDX_T7=7, IDX_FZ=4;
+const TAU=2*Math.PI;
+
+// Adjacent pairs for coherence lines
+const CONNS=[];
+for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+  const dx=ELEC[i].x-ELEC[j].x, dy=ELEC[i].y-ELEC[j].y;
+  if(Math.sqrt(dx*dx+dy*dy)<.28) CONNS.push([i,j]);
+}
+
+// Oscillator state
+const theta=new Float64Array(N);   // phases [rad]
+const omega=new Float64Array(N);   // natural freqs [rad/s]
+for(let i=0;i<N;i++){
+  theta[i]=Math.random()*TAU;
+  // delta/theta band: 2.5 Hz ± 0.4 Hz spread
+  omega[i]=TAU*(2.5+(Math.random()-.5)*.8);
+}
+
+// Sim params (mutable by controls)
+let K=2.0, bpm=120, beatStrength=1.5;
+
+const DT=.005;      // 5 ms integration step
+const TRACE_HZ=200; // EEG trace sample rate
+const TRACE_N=500;  // buffer length (~2.5 s)
+
+const BASE_HZ=2.5; // oscillator natural frequency [Hz]
+let simTime=0, lastBeatCount=0, lastBeatSimTime=-Infinity;
+let running=false, rafId=null, lastTs=null;
+let audioCtx=null;
+let beatN=1;         // harmonic n for n:m locking — updated when bpm changes
+let cachedR=0, cachedPsi=0; // order parameter, computed once per frame
+
+// EEG trace circular buffers
+const trT7=new Float32Array(TRACE_N);
+const trFz=new Float32Array(TRACE_N);
+let trHead=0, trAcc=0;
+
+function wrap(a){return((a%TAU)+TAU)%TAU;}
+
+// Kuramoto order parameter R and mean phase psi
+function orderParam(){
+  let sx=0,sy=0;
+  for(let i=0;i<N;i++){sx+=Math.cos(theta[i]);sy+=Math.sin(theta[i]);}
+  return Math.sqrt(sx*sx+sy*sy)/N;
+}
+function meanPhi(){
+  let sx=0,sy=0;
+  for(let i=0;i<N;i++){sx+=Math.cos(theta[i]);sy+=Math.sin(theta[i]);}
+  return Math.atan2(sy,sx);
+}
+
+// One Euler step
+const dth=new Float64Array(N);
+function simStep(){
+  const Omega_beat=TAU*bpm/60;
+  // eps scales beatStrength so Arnold tongue boundary is near beatStrength≈0.6 at 120 BPM
+  const eps=beatStrength*TAU*0.8; // forcing amplitude [rad/s]
+  for(let i=0;i<N;i++){
+    let c=0;
+    for(let j=0;j<N;j++) c+=Math.sin(theta[j]-theta[i]);
+    dth[i]=omega[i]+(K/N)*c;
+    // Continuous sinusoidal forcing on auditory nodes (Arnold tongue entrainment)
+    // beatN*Omega_beat ≈ omega_i ensures n:m resonance at the natural frequency
+    if(AUDITORY.has(i)) dth[i]+=eps*Math.sin(beatN*Omega_beat*simTime-theta[i]);
+  }
+  for(let i=0;i<N;i++) theta[i]=wrap(theta[i]+dth[i]*DT);
+  simTime+=DT;
+
+  // Beat boundary: audio click + visual flash (forcing is continuous above)
+  const beatCount=Math.floor(Omega_beat*simTime/TAU);
+  if(beatCount>lastBeatCount){lastBeatCount=beatCount;lastBeatSimTime=simTime;fireBeat();}
+
+  // Downsample to TRACE_HZ
+  trAcc+=DT;
+  if(trAcc>=1/TRACE_HZ){
+    trAcc-=1/TRACE_HZ;
+    trT7[trHead]=Math.cos(theta[IDX_T7]);
+    trFz[trHead]=Math.cos(theta[IDX_FZ]);
+    trHead=(trHead+1)%TRACE_N;
+  }
+}
+
+let beatFlashTimer=null;
+function fireBeat(){
+  // Audio click
+  if(audioCtx&&audioCtx.state==='running'){
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value=1200;
+    gain.gain.setValueAtTime(.15,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.045);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime+.05);
+  }
+  // Visual beat dot
+  const dot=document.getElementById('beat-dot');
+  dot.classList.add('flash');
+  clearTimeout(beatFlashTimer);
+  beatFlashTimer=setTimeout(()=>dot.classList.remove('flash'),90);
+}
+
+// Animation loop
+function animate(ts){
+  if(!running)return;
+  const elapsed=lastTs!==null?Math.min((ts-lastTs)*.001,.05):DT;
+  lastTs=ts;
+  const steps=Math.max(1,Math.round(elapsed/DT));
+  for(let s=0;s<Math.min(steps,20);s++) simStep();
+  // Cache order parameter once per frame (used by drawPhase + R badge)
+  let sx=0,sy=0;
+  for(let i=0;i<N;i++){sx+=Math.cos(theta[i]);sy+=Math.sin(theta[i]);}
+  cachedR=Math.sqrt(sx*sx+sy*sy)/N;
+  cachedPsi=Math.atan2(sy,sx);
+  drawPhase(); drawBrain(); drawEEG();
+  document.getElementById('r-val').textContent=cachedR.toFixed(2);
+  rafId=requestAnimationFrame(animate);
+}
+
+// Play/pause
+document.getElementById('play-btn').addEventListener('click',()=>{
+  if(running){
+    running=false; lastTs=null;
+    cancelAnimationFrame(rafId);
+    document.getElementById('play-btn').textContent='▶ Play';
+    document.getElementById('play-btn').classList.remove('on');
+  } else {
+    running=true;
+    if(!audioCtx) audioCtx=new AudioContext();
+    else if(audioCtx.state!=='running') audioCtx.resume();
+    document.getElementById('play-btn').textContent='⏸ Pause';
+    document.getElementById('play-btn').classList.add('on');
+    rafId=requestAnimationFrame(animate);
+  }
+});
+
+document.getElementById('tempo-range').addEventListener('input',e=>{
+  bpm=+e.target.value;
+  document.getElementById('bpm-val').textContent=bpm;
+  // Find n s.t. n*f_beat ≈ BASE_HZ (puts forcing at oscillator natural frequency)
+  const fbeat=bpm/60;
+  let best=1,bestErr=Infinity;
+  for(let n=1;n<=5;n++){const err=Math.abs(n*fbeat-BASE_HZ);if(err<bestErr){bestErr=err;best=n;}}
+  beatN=best;
+  // Avoid spurious beat fires after tempo change
+  lastBeatCount=Math.floor(TAU*bpm/60*simTime/TAU);
+});
+document.getElementById('beat-range').addEventListener('input',e=>{
+  beatStrength=+e.target.value;
+  document.getElementById('beat-val').textContent=(+e.target.value).toFixed(1);
+});
+
+// ── Drawing ─────────────────────────────────────────────────────────────────
+
+// Phase circle
+const phCV=document.getElementById('phase-canvas');
+const phCX=phCV.getContext('2d');
+const PC=75, PR=60; // center and radius
+
+function drawPhase(){
+  phCX.fillStyle='#05050f';
+  phCX.fillRect(0,0,150,150);
+
+  // Grid
+  phCX.strokeStyle='#0e1028'; phCX.lineWidth=1;
+  phCX.beginPath();
+  phCX.moveTo(PC-PR-6,PC); phCX.lineTo(PC+PR+6,PC);
+  phCX.moveTo(PC,PC-PR-6); phCX.lineTo(PC,PC+PR+6);
+  phCX.stroke();
+
+  // Unit circle
+  phCX.beginPath();
+  phCX.arc(PC,PC,PR,0,TAU);
+  phCX.strokeStyle='#1a1e3c'; phCX.lineWidth=1; phCX.stroke();
+
+  // Mean phase vector (order parameter)
+  const R=cachedR, psi=cachedPsi;
+  phCX.beginPath();
+  phCX.moveTo(PC,PC);
+  phCX.lineTo(PC+PR*R*Math.cos(psi),PC+PR*R*Math.sin(psi));
+  phCX.strokeStyle=`rgba(192,204,238,${.35+R*.55})`;
+  phCX.lineWidth=2; phCX.stroke();
+
+  // Beat reference phase: φ=0 is where auditory nodes reset on each beat
+  phCX.beginPath();
+  phCX.arc(PC+PR,PC,3.5,0,TAU);
+  phCX.fillStyle='rgba(255,154,0,.65)';
+  phCX.fill();
+  phCX.fillStyle='rgba(255,154,0,.4)';
+  phCX.font='7px JetBrains Mono,monospace';
+  phCX.textAlign='right';
+  phCX.fillText('φ=0',PC+PR-6,PC-5);
+
+  // Oscillator dots
+  for(let i=0;i<N;i++){
+    const x=PC+PR*Math.cos(theta[i]), y=PC+PR*Math.sin(theta[i]);
+    const aud=AUDITORY.has(i);
+    phCX.beginPath();
+    phCX.arc(x,y,aud?4.5:3,0,TAU);
+    phCX.fillStyle=aud?'#ff9a00':'#2dff4f';
+    phCX.fill();
+  }
+}
+
+// Brain map
+const brCV=document.getElementById('brain-canvas');
+const brCX=brCV.getContext('2d');
+
+function elecPx(e,W,H){
+  return[W*.5+(e.x-.5)*W*.88, H*.5+(e.y-.5)*H*.92];
+}
+
+function drawBrain(){
+  const W=brCV.width, H=brCV.height;
+  const cx=W/2, cy=H/2, rx=W*.44, ry=H*.46;
+
+  brCX.fillStyle='#05050f';
+  brCX.fillRect(0,0,W,H);
+
+  // Head outline
+  brCX.beginPath();
+  brCX.ellipse(cx,cy,rx,ry,0,0,TAU);
+  brCX.strokeStyle='#303668'; brCX.lineWidth=2; brCX.stroke();
+
+  // Nose (nasion bump)
+  brCX.beginPath();
+  brCX.arc(cx,cy-ry+2,16,Math.PI,0);
+  brCX.strokeStyle='#303668'; brCX.lineWidth=1.5; brCX.stroke();
+
+  // Ears
+  brCX.beginPath();
+  brCX.arc(cx-rx,cy,12,Math.PI*.55,Math.PI*1.45);
+  brCX.strokeStyle='#303668'; brCX.lineWidth=1.5; brCX.stroke();
+  brCX.beginPath();
+  brCX.arc(cx+rx,cy,12,-Math.PI*.45,Math.PI*.45);
+  brCX.stroke();
+
+  // Coherence connection lines
+  for(const[a,b]of CONNS){
+    const[ax,ay]=elecPx(ELEC[a],W,H);
+    const[bx,by]=elecPx(ELEC[b],W,H);
+    const coh=.5+.5*Math.cos(theta[a]-theta[b]);
+    if(coh<.35) continue;
+    brCX.beginPath();
+    brCX.moveTo(ax,ay); brCX.lineTo(bx,by);
+    brCX.strokeStyle=`rgba(45,255,79,${(coh*.4).toFixed(2)})`;
+    brCX.lineWidth=coh*2; brCX.stroke();
+  }
+
+  // Electrode nodes — firefly glow
+  for(let i=0;i<N;i++){
+    const[px,py]=elecPx(ELEC[i],W,H);
+    const aud=AUDITORY.has(i);
+    // Narrow Gaussian pulse at θ=0 → brief firefly flash once per cycle
+    const act=Math.exp(-2*(1-Math.cos(theta[i])));
+    const eb=simTime-lastBeatSimTime;
+    const flash=aud&&eb<.1?(.9*(1-eb/.1)):0;
+    const lum=Math.min(1,act+flash);
+
+    if(lum>.05){
+      const gr=brCX.createRadialGradient(px,py,0,px,py,(aud?22:16)*(0.4+lum*.6));
+      const base=aud?'255,154,0':'45,255,79';
+      gr.addColorStop(0,`rgba(${base},${(lum*.8).toFixed(2)})`);
+      gr.addColorStop(1,`rgba(${base},0)`);
+      brCX.beginPath();
+      brCX.arc(px,py,(aud?22:16)*(0.4+lum*.6),0,TAU);
+      brCX.fillStyle=gr; brCX.fill();
+    }
+
+    // Core dot
+    brCX.beginPath();
+    brCX.arc(px,py,aud?5.5:4.5,0,TAU);
+    const v=Math.round((0.2+lum*.8)*255);
+    brCX.fillStyle=aud?`rgb(${v},${Math.round(v*.58)},0)`:`rgb(0,${v},${Math.round(v*.3)})`;
+    brCX.fill();
+
+    // Label (fades in with activity)
+    brCX.fillStyle=`rgba(100,120,180,${.2+lum*.45})`;
+    brCX.font=`${aud?9:8}px 'JetBrains Mono',monospace`;
+    brCX.textAlign='center';
+    brCX.fillText(ELEC[i].n,px,py-(aud?11:10));
+  }
+}
+
+// EEG traces
+const eegCV=document.getElementById('eeg-canvas');
+const eegCX=eegCV.getContext('2d');
+
+function drawEEG(){
+  const strip=eegCV.parentElement;
+  const W=strip.clientWidth, H=strip.clientHeight;
+  if(W<=0||H<=0) return;
+  if(eegCV.width!==W||eegCV.height!==H){eegCV.width=W;eegCV.height=H;}
+
+  eegCX.fillStyle='#09091d';
+  eegCX.fillRect(0,0,W,H);
+
+  const cy=H/2;
+  eegCX.strokeStyle='#131528'; eegCX.lineWidth=1;
+  eegCX.beginPath();
+  eegCX.moveTo(0,cy); eegCX.lineTo(W,cy); eegCX.stroke();
+
+  const nDraw=Math.min(TRACE_N,W);
+  const amp=H*.38;
+
+  function trace(buf,color){
+    eegCX.beginPath(); eegCX.strokeStyle=color; eegCX.lineWidth=1.5;
+    for(let i=0;i<nDraw;i++){
+      const bi=(trHead-nDraw+i+TRACE_N)%TRACE_N;
+      const x=(i/(nDraw-1))*W, y=cy-buf[bi]*amp;
+      i===0?eegCX.moveTo(x,y):eegCX.lineTo(x,y);
+    }
+    eegCX.stroke();
+  }
+  trace(trT7,'#ff9a00');
+  trace(trFz,'#00d4ff');
+}
+
+// Rotary knob for K
+(function(){
+  const cv=document.getElementById('k-knob');
+  const ctx=cv.getContext('2d');
+  const W=58,H=58,CX=29,CY=29;
+  const K_MIN=0,K_MAX=10;
+  const A0=Math.PI*.75, A1=Math.PI*2.25, AR=A1-A0;
+  let drag=false,dy0=0,k0=K;
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // Track ring
+    ctx.beginPath();ctx.arc(CX,CY,22,A0,A1);
+    ctx.strokeStyle='#161830';ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();
+    // Value arc
+    const va=A0+(K/K_MAX)*AR;
+    ctx.beginPath();ctx.arc(CX,CY,22,A0,va);
+    ctx.strokeStyle='#2dff4f';ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();
+    // Body
+    ctx.beginPath();ctx.arc(CX,CY,16,0,TAU);
+    ctx.fillStyle='#09091d';ctx.fill();
+    ctx.strokeStyle='#1a1e3c';ctx.lineWidth=1;ctx.stroke();
+    // Indicator
+    ctx.beginPath();
+    ctx.arc(CX+10*Math.cos(va),CY+10*Math.sin(va),3,0,TAU);
+    ctx.fillStyle='#2dff4f';ctx.fill();
+  }
+
+  function update(cy2){
+    K=Math.max(K_MIN,Math.min(K_MAX,k0+(dy0-cy2)*.08));
+    document.getElementById('k-val').textContent=K.toFixed(1);
+    draw();
+  }
+  cv.addEventListener('mousedown',e=>{drag=true;dy0=e.clientY;k0=K;e.preventDefault()});
+  document.addEventListener('mousemove',e=>{if(drag)update(e.clientY)});
+  document.addEventListener('mouseup',()=>drag=false);
+  cv.addEventListener('touchstart',e=>{drag=true;dy0=e.touches[0].clientY;k0=K;e.preventDefault()},{passive:false});
+  document.addEventListener('touchmove',e=>{if(drag)update(e.touches[0].clientY)});
+  document.addEventListener('touchend',()=>drag=false);
+  draw();
+})();
+
+// Initial static frame
+drawPhase(); drawBrain(); drawEEG();
+
+})();
+</script>
