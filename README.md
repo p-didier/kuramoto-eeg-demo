@@ -1,5 +1,7 @@
 # Kuramoto EEG Demo
 
+\[NB: **all files** in this repository have been vibe-coded using Claude Sonnet 4.6 without human manual edits to the code itself at all, except this very set of sentences in ``README.md``, written by hand by Paul. One major conceptual flaw was noticed during the CoE meeting by A. Danielsen in the simulated EEG signals, showing an entrainment pattern in contradiction with the theory. The purpose of this exercise was to get familiarized with the use of agentic AI.\] 
+
 Interactive demo showing how coupled neural oscillators synchronise to a musical beat.
 Built for the CoE meetup hackathon 2026.
 
