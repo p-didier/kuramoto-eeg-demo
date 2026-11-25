@@ -1,6 +1,7 @@
 # Kuramoto EEG Demo
 
-\[NB: **all files** in this repository have been vibe-coded using Claude Sonnet 4.6 without human manual edits to the code itself at all, except this very set of sentences in ``README.md``, written by hand by Paul. One major conceptual flaw was noticed during the CoE meeting by A. Danielsen in the simulated EEG signals, showing an entrainment pattern in contradiction with the theory. The purpose of this exercise was to get familiarized with the use of agentic AI.\] 
+> [!WARNING]
+> **All files** in this repository have been vibe-coded using Claude Sonnet 4.6 without human manual edits to the code itself at all, except this very set of sentences in `README.md`, written by hand by Paul. One major conceptual flaw was noticed during the CoE meeting by A. Danielsen in the simulated EEG signals, showing an entrainment pattern in contradiction with the theory. The purpose of this exercise was to get familiarized with the use of agentic AI. 
 
 Interactive demo showing how coupled neural oscillators synchronise to a musical beat.
 Built for the CoE meetup hackathon 2026.
@@ -98,6 +99,9 @@ Reload the page and it starts from scratch with new random initial phases.
 ## Files
 
 ```
-kuramoto-eeg.html    self-contained demo, open in any browser
-README.md            this file
+kuramoto-eeg.html           self-contained demo, open in any browser
+README.md                   this file
+conversation-transcript.md  the Claude Code session that built the demo
 ```
+
+`conversation-transcript.md` is a readable rendering of the Claude Code session log. It covers the whole session in order: the design interview, the first build, the self-critique and fixes, and the GitHub setup. User prompts and Claude's replies are verbatim, with a UTC timestamp per turn. Each tool call (file edit, shell command, publish) is one line. Tool output, model thinking and harness metadata are left out. Email addresses are redacted. The raw log is a 2.5 MB JSONL file kept locally by Claude Code under `~/.claude/projects/`.
